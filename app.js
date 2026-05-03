@@ -1,0 +1,12 @@
+const colors={city:'#4da0ff',county:'#a94cff',state:'#24c7db',private:'#ff7c24'};let active=null,markers=[];count.textContent=LPR_LOCATIONS.length;listCount.textContent=LPR_LOCATIONS.length;
+function showTab(id){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.getElementById(id).classList.add('active');setTimeout(()=>map&&map.invalidateSize(),80)}
+function coords(i){let r=(i*9301+49297)%233280/233280, r2=(i*4567+89123)%233280/233280;return [43.5+r*5.5,-97.2+r2*8.2]}
+function dot(color){return L.divIcon({html:`<div style="width:16px;height:16px;border-radius:50%;background:${color};box-shadow:0 0 0 5px ${color}33"></div>`,className:'',iconSize:[16,16]})}
+const map=L.map('map',{zoomControl:false}).setView([46.2,-94.4],6);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:''}).addTo(map);
+function renderMarkers(){markers.forEach(m=>m.remove());markers=[];LPR_LOCATIONS.forEach((x,i)=>{if(active&&x.type!==active)return;let m=L.marker(coords(i),{icon:dot(colors[x.type]||colors.city)}).addTo(map).on('click',()=>openSheet(x));m.bindPopup(`<b>${x.location}</b><br>${x.agency}`);markers.push(m)})}
+document.querySelectorAll('.chips button').forEach(b=>b.onclick=()=>{active=active===b.dataset.filter?null:b.dataset.filter;renderMarkers()});
+function renderList(){let q=search.value.toLowerCase(),wrap=list;wrap.innerHTML='';let data=LPR_LOCATIONS.filter(x=>(x.location+x.agency+x.city).toLowerCase().includes(q));let groups={};data.forEach(x=>(groups[x.city]??=[]).push(x));Object.keys(groups).sort().forEach(city=>{let h=document.createElement('div');h.className='cityHead';h.textContent=city;wrap.appendChild(h);groups[city].forEach(x=>{let d=document.createElement('div');d.className='item '+x.type;d.innerHTML=`<h3>${x.location}</h3><b>${x.agency}</b><span class="badge">${label(x.type)}</span>`;d.onclick=()=>openSheet(x);wrap.appendChild(d)})})}
+function label(t){return t==='county'?'County':t==='state'?'State':t==='private'?'Private':'City PD'}
+function openSheet(x){sheet.classList.add('open');sheetBody.innerHTML=`<span class="badge">${label(x.type)}</span><h2>${x.location}</h2><p><b style="color:${colors[x.type]}">${x.agency}</b><br>${x.city}, Minnesota</p><hr><p><b style="color:#ff5362">Fixed</b></p><p>Fixed LPR location record.</p><p><i>Source: user-provided Minnesota LPR list. Some locations are approximate.</i></p>`}
+function closeSheet(){sheet.classList.remove('open')}
+search.oninput=renderList;renderMarkers();renderList();
