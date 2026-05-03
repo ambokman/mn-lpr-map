@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>MN Plate Reader Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+  <main>
+    <section id="mapTab" class="tab active">
+      <header class="pageHeader">
+        <div class="icon cameraIcon">▧</div>
+        <div>
+          <h1>MN Plate Reader Map</h1>
+          <p><span id="count">702</span> known locations</p>
+        </div>
+      </header>
+
+      <div class="chips" aria-label="Map filters">
+        <button class="filterChip cityChip" data-filter="city">• City PD</button>
+        <button class="filterChip countyChip" data-filter="county">• County</button>
+        <button class="filterChip stateChip" data-filter="state">• State</button>
+        <button class="filterChip privateChip" data-filter="private">• Private</button>
+      </div>
+
+      <div id="map" aria-label="Zoomable Minnesota LPR map"></div>
+    </section>
+
+    <section id="listTab" class="tab">
+      <header class="pageHeader compactHeader">
+        <div class="icon cameraIcon">▧</div>
+        <div>
+          <h1>MN Plate Reader Map</h1>
+          <p><span id="listCount">702</span> of <span id="listTotal">702</span> known locations</p>
+        </div>
+      </header>
+
+      <div class="chips" aria-label="List filters">
+        <button class="filterChip cityChip" data-filter="city">• City PD</button>
+        <button class="filterChip countyChip" data-filter="county">• County</button>
+        <button class="filterChip stateChip" data-filter="state">• State</button>
+        <button class="filterChip privateChip" data-filter="private">• Private</button>
+      </div>
+
+      <input id="search" autocomplete="off" placeholder="⌕  Search city, agency, or location...">
+      <div id="resultCount" class="resultCount">702 locations</div>
+      <div id="list"></div>
+    </section>
+
+    <section id="aboutTab" class="tab about">
+      <div class="hero">
+        <div class="bigicon cameraIcon">▧</div>
+        <h1>MN Plate Reader Map</h1>
+        <p>Documenting known public license plate reader locations across Minnesota based on public records and transparency disclosures.</p>
+      </div>
+
+      <div class="stats">
+        <b>702<span>Locations</span></b>
+        <b>137<span>Cities</span></b>
+        <b>101<span>Agencies</span></b>
+      </div>
+
+      <div class="card legendCard">
+        <h2>Map Legend</h2>
+        <p><b class="blue">● City Police Department</b><br>Municipal LPR deployments</p>
+        <p><b class="purple">● County Sheriff</b><br>County-level deployments</p>
+        <p><b class="cyan">● Minnesota State Patrol</b><br>State highway/interstate LPRs</p>
+        <p><b class="orange">● Private / Transit</b><br>Metro Transit, airports, private operators</p>
+        <hr>
+        <p><b class="red">● Fixed camera</b><br>Permanent, stationary installation</p>
+        <p><b class="purple">● Network</b><br>Part of coordinated multi-camera network, e.g. Flock Safety</p>
+        <p><b class="yellow">● Mobile</b><br>Vehicle-mounted, movable unit</p>
+      </div>
+
+      <a class="lawCard" href="https://www.revisor.mn.gov/statutes/cite/13.824" target="_blank" rel="noopener">
+        <h2>▰ Minnesota Law: Minn. Stat. § 13.824</h2>
+        <p>Minnesota limits LPR data retention to 60 days unless linked to a criminal investigation. Agencies must publish annual reports on LPR usage. Data may be shared with other agencies and, in some cases, private networks.</p>
+      </a>
+
+      <h2 class="sectionTitle">Frequently Asked Questions</h2>
+
+      <div class="faqCard">
+        <h3>What is a license plate reader (LPR)?</h3>
+        <p>A license plate reader is a camera system that uses optical character recognition to automatically read vehicle license plates. They can capture and timestamp the location of any vehicle passing the camera.</p>
+      </div>
+
+      <div class="faqCard">
+        <h3>Are LPRs legal in Minnesota?</h3>
+        <p>Yes. Minnesota law allows law enforcement to use LPRs but regulates data retention — agencies generally cannot retain data for more than 60 days unless linked to an active investigation.</p>
+      </div>
+
+      <div class="faqCard">
+        <h3>What data is collected?</h3>
+        <p>LPR systems typically record the license plate number, date, time, GPS location, and often a photo of the vehicle. Some systems share data across jurisdictions through national networks.</p>
+      </div>
+
+      <div class="faqCard">
+        <h3>What is Flock Safety?</h3>
+        <p>Flock Safety is a private company that sells LPR camera networks to police departments and HOAs. Several Minnesota cities have deployed Flock Safety “virtual fences” around their boundaries.</p>
+      </div>
+
+      <div class="faqCard">
+        <h3>How was this data collected?</h3>
+        <p>Locations are sourced from public records requests, ACLU of Minnesota filings, city council records, news reports, and government transparency disclosures. Some locations are approximate.</p>
+      </div>
+
+      <div class="faqCard">
+        <h3>Is this data complete?</h3>
+        <p>No — this map shows only known and documented LPR locations. Many more may exist. Mobile LPR units on patrol vehicles are not shown. Data may be outdated.</p>
+      </div>
+
+      <div class="card resourcesCard">
+        <h2>Resources</h2>
+        <a href="https://www.aclu-mn.org/" target="_blank" rel="noopener">↗ ACLU of Minnesota – LPR Resources</a>
+        <a href="https://www.revisor.mn.gov/statutes/cite/13.824" target="_blank" rel="noopener">↗ MN Statute § 13.824 – LPR Data</a>
+        <a href="https://sls.eff.org/technologies/automated-license-plate-readers-alprs" target="_blank" rel="noopener">↗ EFF – Street Level Surveillance: LPRs</a>
+      </div>
+
+      <p class="footnote">Data sourced from public records, ACLU MN filings, city council documents, news reports, and government transparency disclosures. Locations are approximate. Not exhaustive — many LPR installations are not publicly disclosed.</p>
+    </section>
+  </main>
+
+  <nav>
+    <button id="mapNav" class="on" onclick="showTab('mapTab')">▱<span>Map</span></button>
+    <button id="listNav" onclick="showTab('listTab')">☷<span>List</span></button>
+    <button id="aboutNav" onclick="showTab('aboutTab')">ⓘ<span>About</span></button>
+  </nav>
+
+  <div id="sheetBackdrop" onclick="closeSheet()"></div>
+  <div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-label="Location details">
+    <div class="handle"></div>
+    <button class="closeBtn" onclick="closeSheet()">×</button>
+    <div id="sheetBody"></div>
+  </div>
+
+  <script src="locations.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
