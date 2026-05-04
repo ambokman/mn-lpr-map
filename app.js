@@ -1,20 +1,24 @@
 const colors={city:'#39d5ff',county:'#9b4dff',state:'#ffcf32',private:'#ff9b2f'};
 const SOURCE_TEXT='MN BCA official LPR registry — dps.mn.gov/divisions/bca/data-and-reports/agencies-use-lprs-lpr';
-const GEO_CACHE_KEY='mn-lpr-geocode-cache-v3';
-const GEO_DELAY_MS=1300;
+const GEO_CACHE_KEY='mn-lpr-geocode-cache-v5';
+const GEO_DELAY_MS=1150;
 
 /*
-  The dataset contains public location descriptions plus fallback coordinates.
-  Some fallback pins can be wrong. Add verified corrections here after checking Apple Maps / Google Maps.
+  EXACT MARKER RULE:
+  The BCA-style location list gives street/intersection text, not verified latitude/longitude.
+  Older versions used fallback coordinates, which caused wrong pins.
 
-  Format:
+  This version DOES NOT show fallback pins as exact map markers.
+  It shows only:
+  1) manually verified coordinates in MANUAL_COORD_OVERRIDES, or
+  2) coordinates returned by the browser map lookup and cached locally.
+
+  Add verified corrections here:
   'record-id': [latitude, longitude]
-
-  Example:
-  'fari-002': [44.000000, -93.000000]
 */
 const MANUAL_COORD_OVERRIDES={
-  // 'fari-002': [PASTE_VERIFIED_LATITUDE_HERE, PASTE_VERIFIED_LONGITUDE_HERE]
+  // Example:
+  // 'fari-002': [44.000000, -93.000000]
 };
 
 let active=null;
@@ -25,6 +29,7 @@ let geoQueue=[];
 let geoQueued=new Set();
 let geoBusy=false;
 let geoCache=loadGeoCache();
+let markerMode='verified'; // verified = no wrong fallback pins; approx = show fallback pins too
 
 const total=LPR_LOCATIONS.length;
 count.textContent=total;
@@ -52,7 +57,7 @@ function showTab(id){
 
   setTimeout(()=>{
     map&&map.invalidateSize();
-    if(id==='mapTab') enqueueVisibleGeocodes(90);
+    if(id==='mapTab') enqueueVisibleGeocodes(60);
   },120);
 }
 
@@ -81,14 +86,6 @@ function notesText(x){
   return 'Fixed LPR — official BCA location.';
 }
 
-function mapsQuery(x){
-  return `${cleanAddressForGeocode(x.location)}, ${x.city}, Minnesota`;
-}
-
-function googleMapsUrl(x){
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery(x))}`;
-}
-
 function cleanAddressForGeocode(location){
   return String(location||'')
     .split('—')[0]
@@ -106,11 +103,19 @@ function cleanAddressForGeocode(location){
     .trim();
 }
 
+function mapsQuery(x){
+  return `${cleanAddressForGeocode(x.location)}, ${x.city}, Minnesota`;
+}
+
+function googleMapsUrl(x){
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery(x))}`;
+}
+
 function inMinnesota(lat,lng){
   return lat>=43.3 && lat<=49.6 && lng>=-97.4 && lng<=-89.3;
 }
 
-function coordInfo(x){
+function coordInfo(x,{allowApprox=false}={}){
   if(MANUAL_COORD_OVERRIDES[x.id]){
     const [lat,lng]=MANUAL_COORD_OVERRIDES[x.id];
     return {lat,lng,quality:'verified',label:'Verified coordinate'};
@@ -125,23 +130,24 @@ function coordInfo(x){
     };
   }
 
-  if(typeof x.lat==='number' && typeof x.lng==='number'){
-    return {lat:x.lat,lng:x.lng,quality:'approx',label:'Approximate coordinate'};
+  if(allowApprox && typeof x.lat==='number' && typeof x.lng==='number'){
+    return {lat:x.lat,lng:x.lng,quality:'approx',label:'Approximate fallback coordinate'};
   }
 
   return null;
 }
 
-function dot(color,quality='approx'){
-  const isApprox=quality==='approx';
-  const core=isApprox?10:12;
-  const halo=isApprox?30:42;
-  const opacity=isApprox?.72:1;
-  const pulse=isApprox?'':' pulse';
+function dot(color,quality='geocoded'){
+  const core=quality==='approx'?8:11;
+  const halo=quality==='approx'?24:38;
+  const opacity=quality==='approx'?.38:1;
+  const pulse=quality==='approx'?'':' pulse';
+  const bg=quality==='approx'?'#0b1628':color;
+  const border=quality==='approx'?`2px dashed ${color}`:'1px solid rgba(255,255,255,.55)';
 
   return L.divIcon({
     html:`
-      <div class="glowMarker${pulse}" style="--pin:${color};--core:${core}px;--halo:${halo}px;--op:${opacity}">
+      <div class="glowMarker${pulse} ${quality}" style="--pin:${color};--core:${core}px;--halo:${halo}px;--op:${opacity};--bg:${bg};--border:${border}">
         <span class="glowHalo"></span>
         <span class="glowCore"></span>
       </div>
@@ -159,28 +165,44 @@ function initMap(){
     preferCanvas:true
   }).setView([46.25,-94.2],6);
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  const base=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',{
     maxZoom:19,
+    subdomains:'abcd',
     attribution:'© OpenStreetMap © CARTO',
-    subdomains:'abcd'
+    className:'baseTiles'
+  }).addTo(map);
+
+  const labels=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',{
+    maxZoom:19,
+    subdomains:'abcd',
+    attribution:'',
+    className:'labelTiles',
+    pane:'tilePane'
   }).addTo(map);
 
   map.fitBounds([[43.35,-97.35],[49.38,-89.45]],{padding:[6,6]});
 
+  const controls=document.createElement('div');
+  controls.id='mapControlDock';
+  controls.innerHTML=`
+    <button id="recenterMap" type="button" title="Recenter Minnesota">⌖</button>
+    <button id="pinMode" type="button" title="Toggle approximate pins">Exact pins</button>
+  `;
+  document.getElementById('mapTab').appendChild(controls);
+
+  document.getElementById('recenterMap').onclick=()=>map.fitBounds([[43.35,-97.35],[49.38,-89.45]],{padding:[6,6]});
+  document.getElementById('pinMode').onclick=()=>{
+    markerMode=markerMode==='verified'?'approx':'verified';
+    document.getElementById('pinMode').textContent=markerMode==='verified'?'Exact pins':'All pins';
+    renderMarkers();
+  };
+
   const status=document.createElement('div');
   status.id='mapStatus';
-  status.innerHTML='<b>Map:</b> glowing pins show known LPR records. Hollow/soft pins may be approximate until verified.';
+  status.innerHTML='<b>Map:</b> default shows only verified/map-lookup pins, so bad fallback pins are hidden. Use “All pins” only to view approximate fallback points.';
   document.getElementById('mapTab').appendChild(status);
 
-  const locateButton=document.createElement('button');
-  locateButton.id='recenterMap';
-  locateButton.type='button';
-  locateButton.innerHTML='⌖';
-  locateButton.title='Recenter Minnesota';
-  locateButton.onclick=()=>map.fitBounds([[43.35,-97.35],[49.38,-89.45]],{padding:[6,6]});
-  document.getElementById('mapTab').appendChild(locateButton);
-
-  map.on('moveend zoomend',()=>enqueueVisibleGeocodes(75));
+  map.on('moveend zoomend',()=>enqueueVisibleGeocodes(45));
 }
 
 function currentData(){
@@ -198,7 +220,7 @@ function renderMarkers(){
   markerById={};
 
   LPR_LOCATIONS.filter(x=>!active||x.type===active).forEach(x=>{
-    const info=coordInfo(x);
+    const info=coordInfo(x,{allowApprox:markerMode==='approx'});
     if(!info) return;
 
     const color=colors[x.type]||colors.city;
@@ -206,12 +228,21 @@ function renderMarkers(){
       .addTo(map)
       .on('click',()=>focusLocation(x));
 
-    marker.bindPopup(`<b>${readableLocation(x.location)}</b><br>${x.agency}<br><small>${x.city}, MN</small>`);
+    marker.bindPopup(`<b>${readableLocation(x.location)}</b><br>${x.agency}<br><small>${x.city}, MN · ${info.quality==='approx'?'Approximate pin':'Map pin'}</small>`);
     markers.push(marker);
     markerById[x.id]=marker;
   });
 
-  setTimeout(()=>enqueueVisibleGeocodes(90),350);
+  updatePinStats();
+  setTimeout(()=>enqueueVisibleGeocodes(45),250);
+}
+
+function updatePinStats(){
+  const exactCount=LPR_LOCATIONS.filter(x=>MANUAL_COORD_OVERRIDES[x.id]||geoCache[x.id]).length;
+  const el=document.getElementById('mapStatus');
+  if(el){
+    el.innerHTML=`<b>Map:</b> ${exactCount} exact/map-lookup pins available. Wrong fallback pins are hidden by default. Tap a list item to map that location.`;
+  }
 }
 
 function syncFilterButtons(){
@@ -250,7 +281,7 @@ function renderList(){
     list.appendChild(h);
 
     groups[city].forEach(x=>{
-      const info=coordInfo(x);
+      const info=coordInfo(x,{allowApprox:false});
       const d=document.createElement('div');
       d.className=`item ${x.type||'city'}`;
       d.innerHTML=`
@@ -259,7 +290,7 @@ function renderList(){
         <div class="itemMeta">
           <span class="badge ${x.type||'city'}">${label(x.type)}</span>
           <span class="fixedMini">⌖ Fixed</span>
-          <span class="coordMini ${info?.quality||'approx'}">${info?.quality==='approx'?'Approx. pin':'Map pin'}</span>
+          <span class="coordMini ${info?.quality||'lookup'}">${info?'Map pin':'Tap to map'}</span>
         </div>
         <span class="chev">›</span>
       `;
@@ -270,34 +301,44 @@ function renderList(){
 }
 
 async function focusLocation(x){
-  openSheet(x);
+  openSheet(x,'Looking up exact map position…');
 
-  const cached=coordInfo(x);
-  if(cached && cached.quality!=='approx'){
+  const cached=coordInfo(x,{allowApprox:false});
+  if(cached){
+    ensureMarker(x,cached);
     map?.flyTo([cached.lat,cached.lng],16,{duration:.55});
+    openSheet(x);
     return;
   }
 
   const result=await geocodeNow(x);
   if(result){
-    updateMarkerPosition(x,result.lat,result.lng,'geocoded');
+    updateMarkerPosition(x,result.lat,result.lng,'geocoded',true);
     map?.flyTo([result.lat,result.lng],16,{duration:.55});
+    renderList();
+    updatePinStats();
     openSheet(x);
-  }else if(cached){
-    map?.flyTo([cached.lat,cached.lng],15,{duration:.55});
+    return;
+  }
+
+  const approx=coordInfo(x,{allowApprox:true});
+  if(approx){
+    openSheet(x,'Exact map lookup failed. Showing approximate fallback only.');
+    updateMarkerPosition(x,approx.lat,approx.lng,'approx',true);
+    map?.flyTo([approx.lat,approx.lng],14,{duration:.55});
   }
 }
 
-function openSheet(x){
+function openSheet(x,extraNote=''){
   sheetBackdrop?.classList.add('open');
   sheet.classList.add('open');
 
   const type=x.type||'city';
   const color=colors[type]||colors.city;
-  const info=coordInfo(x);
-  const coordLabel=info?.quality==='approx'
-    ? 'Approximate marker — verify before relying on this exact pin.'
-    : info?.label || 'Coordinate available';
+  const info=coordInfo(x,{allowApprox:false});
+  const coordLabel=extraNote || (info
+    ? 'Map lookup coordinate available.'
+    : 'Exact marker not loaded yet. Tap “Open location search in Maps” or wait for lookup.');
 
   sheetBody.innerHTML=`
     <span class="badge ${type}">• ${label(type)}</span>
@@ -322,17 +363,12 @@ function closeSheet(){
   sheetBackdrop?.classList.remove('open');
 }
 
-function enqueueVisibleGeocodes(limit=75){
+function enqueueVisibleGeocodes(limit=45){
   if(!map) return;
 
-  const bounds=map.getBounds();
   const candidates=LPR_LOCATIONS
     .filter(x=>(!active||x.type===active))
     .filter(x=>!MANUAL_COORD_OVERRIDES[x.id]&&!geoCache[x.id])
-    .filter(x=>{
-      if(typeof x.lat!=='number'||typeof x.lng!=='number') return true;
-      return bounds.contains([x.lat,x.lng]);
-    })
     .slice(0,limit);
 
   candidates.forEach(x=>enqueueGeocode(x));
@@ -354,7 +390,10 @@ async function processGeoQueue(){
 
     try{
       const result=await geocodeNow(x);
-      if(result) updateMarkerPosition(x,result.lat,result.lng,'geocoded');
+      if(result){
+        updateMarkerPosition(x,result.lat,result.lng,'geocoded',false);
+        updatePinStats();
+      }
     }catch(e){}
 
     await sleep(GEO_DELAY_MS);
@@ -394,20 +433,35 @@ async function geocodeNow(x){
   return result;
 }
 
-function updateMarkerPosition(x,lat,lng,quality='geocoded'){
-  const marker=markerById[x.id];
+function ensureMarker(x,info){
+  if(markerById[x.id]) return;
+  updateMarkerPosition(x,info.lat,info.lng,info.quality||'geocoded',true);
+}
+
+function updateMarkerPosition(x,lat,lng,quality='geocoded',forceAdd=false){
+  let marker=markerById[x.id];
+  const color=colors[x.type]||colors.city;
+
+  if(!marker && forceAdd){
+    marker=L.marker([lat,lng],{icon:dot(color,quality)})
+      .addTo(map)
+      .on('click',()=>focusLocation(x));
+    markers.push(marker);
+    markerById[x.id]=marker;
+  }
+
   if(!marker) return;
 
   marker.setLatLng([lat,lng]);
-  marker.setIcon(dot(colors[x.type]||colors.city,quality));
-  marker.bindPopup(`<b>${readableLocation(x.location)}</b><br>${x.agency}<br><small>${x.city}, MN</small>`);
+  marker.setIcon(dot(color,quality));
+  marker.bindPopup(`<b>${readableLocation(x.location)}</b><br>${x.agency}<br><small>${x.city}, MN · ${quality==='approx'?'Approximate pin':'Map pin'}</small>`);
 }
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 
 search.oninput=()=>{
   renderList();
-  enqueueVisibleGeocodes(50);
+  enqueueVisibleGeocodes(30);
 };
 
 initMap();
